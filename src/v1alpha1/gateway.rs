@@ -63,6 +63,13 @@ pub struct MCPGGatewaySpec {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub image_pull_secrets: Vec<LocalObjectReference>,
 
+    /// Secrets in the gateway's namespace projected into the gateway
+    /// container as `envFrom`, in list order; every key becomes an
+    /// environment variable. Later sources win on collision per
+    /// Kubernetes `envFrom` semantics.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub env_from_secrets: Vec<LocalObjectReference>,
+
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workload_identity: Option<GatewayWorkloadIdentity>,
 
@@ -137,6 +144,30 @@ pub struct MCPGGatewaySpec {
 
 fn default_replicas() -> i32 {
     1
+}
+
+impl MCPGGatewaySpec {
+    /// The maximum replica count this gateway can actually reach, plus the
+    /// spec path responsible for it (for error messages). When autoscaling is
+    /// enabled the HPA's upper bound is the real ceiling — the rendered
+    /// Deployment drops its static `replicas`, and the `maxReplicas`
+    /// defaulting here mirrors the operator's HPA renderer — otherwise the
+    /// static `spec.replicas`. Shared by the admission guards and the
+    /// multi-replica child renderers (PDB, topology spread) so "is this
+    /// gateway multi-replica?" has one answer.
+    pub fn effective_replica_ceiling(&self) -> (i32, &'static str) {
+        match self.autoscaling.as_ref().filter(|a| a.enabled) {
+            Some(a) => {
+                let min = a.min_replicas.unwrap_or(1).max(1);
+                let max = a
+                    .max_replicas
+                    .unwrap_or_else(|| self.replicas.max(min))
+                    .max(min);
+                (max, "spec.autoscaling.maxReplicas")
+            }
+            None => (self.replicas, "spec.replicas"),
+        }
+    }
 }
 
 /// Managed-fleet routing + identity (host-per-instance). Inert when absent.
@@ -581,6 +612,63 @@ mod tests {
         assert!(s.plugin_set_ref.is_none());
     }
 
+    fn ceiling_spec(replicas: i32, autoscaling: Option<HorizontalAutoscaler>) -> MCPGGatewaySpec {
+        MCPGGatewaySpec {
+            replicas,
+            autoscaling,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn ceiling_is_static_replicas_without_autoscaling() {
+        let (c, f) = ceiling_spec(3, None).effective_replica_ceiling();
+        assert_eq!((c, f), (3, "spec.replicas"));
+        // Disabled autoscaling falls back to static replicas too.
+        let (c, f) = ceiling_spec(
+            3,
+            Some(HorizontalAutoscaler {
+                enabled: false,
+                max_replicas: Some(99),
+                ..Default::default()
+            }),
+        )
+        .effective_replica_ceiling();
+        assert_eq!((c, f), (3, "spec.replicas"));
+    }
+
+    #[test]
+    fn ceiling_is_hpa_max_when_autoscaling_enabled() {
+        // The HPA ceiling — not the static replicas — is what bounds a cap.
+        let (c, f) = ceiling_spec(
+            1,
+            Some(HorizontalAutoscaler {
+                enabled: true,
+                min_replicas: Some(2),
+                max_replicas: Some(20),
+                ..Default::default()
+            }),
+        )
+        .effective_replica_ceiling();
+        assert_eq!((c, f), (20, "spec.autoscaling.maxReplicas"));
+    }
+
+    #[test]
+    fn hpa_ceiling_defaults_like_the_renderer_when_max_omitted() {
+        // max omitted → max(replicas, min); here replicas=4, min=2 → 4.
+        let (c, _) = ceiling_spec(
+            4,
+            Some(HorizontalAutoscaler {
+                enabled: true,
+                min_replicas: Some(2),
+                max_replicas: None,
+                ..Default::default()
+            }),
+        )
+        .effective_replica_ceiling();
+        assert_eq!(c, 4);
+    }
+
     #[test]
     fn plugin_set_ref_serialises_when_set() {
         let s = MCPGGatewaySpec {
@@ -595,5 +683,39 @@ mod tests {
         let yaml = serde_yaml::to_string(&s).unwrap();
         assert!(yaml.contains("pluginSetRef:"), "got: {yaml}");
         assert!(yaml.contains("payments-plugins"), "got: {yaml}");
+    }
+
+    #[test]
+    fn env_from_secrets_defaults_empty_in_yaml() {
+        let yaml = "image: {}\nconfig: null\n";
+        let s: MCPGGatewaySpec = serde_yaml::from_str(yaml).unwrap();
+        assert!(s.env_from_secrets.is_empty());
+        // Empty list is elided on the way back out.
+        let out = serde_yaml::to_string(&s).unwrap();
+        assert!(!out.contains("envFromSecrets"), "got: {out}");
+    }
+
+    #[test]
+    fn env_from_secrets_roundtrips_in_order() {
+        let s = MCPGGatewaySpec {
+            image: GatewayImage::default(),
+            replicas: 1,
+            config: serde_json::Value::Null,
+            env_from_secrets: vec![
+                LocalObjectReference {
+                    name: "mcpg-cluster-coordination".into(),
+                },
+                LocalObjectReference {
+                    name: "tenant-extra-env".into(),
+                },
+            ],
+            ..Default::default()
+        };
+        let yaml = serde_yaml::to_string(&s).unwrap();
+        assert!(yaml.contains("envFromSecrets:"), "got: {yaml}");
+        let back: MCPGGatewaySpec = serde_yaml::from_str(&yaml).unwrap();
+        assert_eq!(back.env_from_secrets, s.env_from_secrets);
+        assert_eq!(back.env_from_secrets[0].name, "mcpg-cluster-coordination");
+        assert_eq!(back.env_from_secrets[1].name, "tenant-extra-env");
     }
 }

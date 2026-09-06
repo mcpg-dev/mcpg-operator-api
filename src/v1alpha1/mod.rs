@@ -55,7 +55,12 @@ pub use revocation_list::{
 };
 
 pub use cluster::{
-    ClusterBackend, ClusterCredentialRef, MCPGCluster, MCPGClusterSpec, MCPGClusterStatus,
+    ClusterBackend, ClusterCredentialRef, DEFAULT_MANAGED_NATS_IMAGE, DEFAULT_MANAGED_STORAGE_SIZE,
+    MANAGED_NATS_CA_ENV, MANAGED_NATS_CLIENT_PORT, MANAGED_NATS_TOKEN_ENV, MANAGED_NODE_ID_ENV,
+    MANAGED_STATE_KEY_ENV, MCPGCluster, MCPGClusterSpec, MCPGClusterStatus, ManagedCoordinator,
+    ManagedCoordinatorTls, ManagedIssuerRef, ManagedStorage, managed_coordination_secret_name,
+    managed_nats_config_name, managed_nats_headless_service_name, managed_nats_service_name,
+    managed_nats_statefulset_name, managed_nats_tls_secret_name,
 };
 
 pub use route::{GatewayRef, MCPGRoute, MCPGRouteSpec, MCPGRouteStatus, RouteMatch, RouteToolRef};
