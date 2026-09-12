@@ -70,6 +70,14 @@ pub struct MCPGGatewaySpec {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub env_from_secrets: Vec<LocalObjectReference>,
 
+    /// Secrets in the gateway's namespace mounted read-only into the
+    /// gateway container, one file per key under `mountPath`. Unlike
+    /// `envFromSecrets`, a mounted Secret follows the object: kubelet
+    /// rewrites the files when the Secret changes, so a value the gateway
+    /// reads from disk (`${secret.NAME}`) can rotate without a pod restart.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub secret_mounts: Vec<SecretMount>,
+
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workload_identity: Option<GatewayWorkloadIdentity>,
 
@@ -529,6 +537,15 @@ pub struct PrometheusRuleSpec {
     pub enabled: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub severity: Option<String>,
+}
+
+/// A Secret mounted as files: `name` is the Secret, `mountPath` the
+/// directory the container sees its keys under (one file per key).
+#[derive(Clone, Debug, Default, Deserialize, Serialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretMount {
+    pub name: String,
+    pub mount_path: String,
 }
 
 /// Same shape as `core/v1.LocalObjectReference`. Used wherever
