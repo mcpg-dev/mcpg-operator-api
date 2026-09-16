@@ -197,6 +197,17 @@ pub struct GatewayCloud {
     /// gets its own HTTPRoute host match + TLS certificate.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub custom_domains: Vec<String>,
+    /// The URL this instance is ADVERTISED at, when the tenant has a verified
+    /// custom domain: the OAuth resource identifier, the endpoint the control
+    /// plane reports, the browser hand-off target. Distinct from
+    /// `externalUrl`, which stays the platform address the route, the DNS
+    /// record and cell migration are keyed on — that name keeps resolving and
+    /// keeps its certificate, but the gateway redirects it here rather than
+    /// serving a second resource identity on it.
+    ///
+    /// Absent ⇒ the platform address is also the advertised one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canonical_url: Option<String>,
 }
 
 // ── Plugin-lifecycle reference types ────────────────────────
