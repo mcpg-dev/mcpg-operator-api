@@ -138,8 +138,11 @@ pub struct ServerFederate {
     pub tool_prefix: Option<String>,
 
     /// Raw `governance` block for the synthesized federation (trust
-    /// floor + CEL), passed through schema-blind exactly like gateway
-    /// `spec.config`.
+    /// floor + CEL + required scopes). The operator checks it with the
+    /// gateway's own type before it writes it: a block the gateway would
+    /// refuse is rejected at admission, and a server admitted with one is
+    /// left out of the gateway config (`GatewayBound=False`,
+    /// `GovernanceInvalid`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(schema_with = "crate::schema_helpers::preserve_object")]
     pub governance: Option<serde_json::Value>,
@@ -174,7 +177,8 @@ pub struct MCPGServerStatus {
     /// - `ImageVerified` — cosign verification outcome (only when
     ///   `spec.verify` is set; verification failure blocks rendering).
     /// - `GatewayBound` — `federate.gatewayRef` resolves to a gateway
-    ///   in this namespace.
+    ///   in this namespace and `federate.governance` is a block that
+    ///   gateway accepts.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub conditions: Vec<Condition>,
 
