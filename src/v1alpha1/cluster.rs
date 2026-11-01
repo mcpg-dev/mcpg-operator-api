@@ -66,10 +66,11 @@ pub const MANAGED_NATS_CA_ENV: &str = "MCPG_CLUSTER_NATS_CA";
 /// valid single NATS subject token (only `[a-z0-9-]`).
 pub const MANAGED_NODE_ID_ENV: &str = "POD_NAME";
 
-/// Pinned default NATS server image for a managed coordinator. Mirrors the
-/// version the platform/gateway Helm charts vendor
-/// (`helm/charts/mcpg/charts/nats`, appVersion 2.10.25).
-pub const DEFAULT_MANAGED_NATS_IMAGE: &str = "nats:2.10.25-alpine";
+/// Pinned default NATS server image for a managed coordinator — the same
+/// version the gateway Helm chart sets for its bundled NATS. 2.14 or later:
+/// before 2.14 a subject-filtered purge walks every block of the stream, so
+/// the KV sweep stalls every bucket write (MCP Events) for seconds.
+pub const DEFAULT_MANAGED_NATS_IMAGE: &str = "nats:2.14.8-alpine";
 
 /// Default JetStream file-store PVC size for a managed coordinator.
 pub const DEFAULT_MANAGED_STORAGE_SIZE: &str = "10Gi";
